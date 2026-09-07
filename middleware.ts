@@ -1,33 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// Simple HTTP Basic Auth gate for the whole dashboard.
-// Credentials come from env vars — set DASHBOARD_USERNAME and DASHBOARD_PASSWORD
-// in Vercel → Settings → Environment Variables. Never hardcode them here.
+import { verifySessionToken, SESSION_COOKIE_NAME } from '@/lib/auth';
 
 export function middleware(req: NextRequest) {
-  const basicAuth = req.headers.get('authorization');
+  const { pathname } = req.nextUrl;
 
-  const expectedUser = process.env.DASHBOARD_USERNAME;
-  const expectedPass = process.env.DASHBOARD_PASSWORD;
-
-  if (!expectedUser || !expectedPass) {
-    // Fail closed: if env vars aren't set, block access rather than leave it open.
-    return new NextResponse('Dashboard auth is not configured.', { status: 500 });
+  // Always allow the login page and its API route through, otherwise
+  // nobody could ever reach the login form to authenticate in the first place.
+  if (pathname === '/login' || pathname.startsWith('/api/auth/')) {
+    return NextResponse.next();
   }
 
-  if (basicAuth) {
-    const authValue = basicAuth.split(' ')[1];
-    const [user, pass] = Buffer.from(authValue, 'base64').toString().split(':');
-
-    if (user === expectedUser && pass === expectedPass) {
-      return NextResponse.next();
-    }
+  const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (verifySessionToken(token)) {
+    return NextResponse.next();
   }
 
-  return new NextResponse('Authentication required.', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="Secure Area"' },
-  });
+  // API routes get a plain 401 JSON response instead of a redirect,
+  // since a fetch() call can't follow an HTML redirect meaningfully.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const loginUrl = new URL('/login', req.url);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

@@ -5,10 +5,27 @@
 body {
   background: #f7f6f3;
   color: #1a1d29;
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.01em;
 }
 
 .badge-high { background: #fdecea; color: #c0392b; border: 1px solid #f0b4ab; }
 .badge-medium { background: #fef5e7; color: #d68910; border: 1px solid #f5cf8f; }
 .badge-low { background: #eafaf1; color: #1e8449; border: 1px solid #a3e4c1; }
 .badge-na { background: #eceff1; color: #607d8b; border: 1px solid #cfd8dc; }
+
+/* subtle card hover lift for clickable rows/cards, used sparingly */
+.card-hover {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.card-hover:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}
+
+::selection {
+  background: rgba(61, 90, 128, 0.18);
+}

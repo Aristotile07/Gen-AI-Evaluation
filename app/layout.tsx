@@ -1,5 +1,5 @@
 import './globals.css';
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/AppShell';
 
 export const metadata = {
   title: 'Evaluation Dashboard',
@@ -10,10 +10,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 p-8 max-w-6xl mx-auto w-full">{children}</main>
-        </div>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
