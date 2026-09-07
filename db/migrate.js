@@ -5,25 +5,28 @@ const fs = require('fs');
 const path = require('path');
 
 function loadEnvLocal() {
-  const envPath = path.join(__dirname, '..', '.env.local');
-  if (!fs.existsSync(envPath)) {
-    console.warn('.env.local not found at', envPath, '— relying on already-set environment variables.');
-    return;
-  }
-  const content = fs.readFileSync(envPath, 'utf8');
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex === -1) continue;
-    const key = trimmed.slice(0, eqIndex).trim();
-    let value = trimmed.slice(eqIndex + 1).trim();
-    // strip surrounding quotes if present
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
+  const candidates = ['.env.local', '.env'];
+  for (const filename of candidates) {
+    const envPath = path.join(__dirname, '..', filename);
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIndex = trimmed.indexOf('=');
+        if (eqIndex === -1) continue;
+        const key = trimmed.slice(0, eqIndex).trim();
+        let value = trimmed.slice(eqIndex + 1).trim();
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        if (!process.env[key]) process.env[key] = value;
+      }
+      console.log('Loaded env vars from', filename);
+      return;
     }
-    if (!process.env[key]) process.env[key] = value;
   }
+  console.warn('No .env.local or .env file found — relying on already-set environment variables.');
 }
 
 loadEnvLocal();
@@ -32,11 +35,19 @@ const { sql } = require('@vercel/postgres');
 
 async function migrate() {
   const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  // Split on semicolons that end a statement (naive but fine for this schema)
-  const statements = schema
+
+  // Strip full-line comments from the whole file first, then split into
+  // statements. Avoids a comment header directly above a CREATE TABLE
+  // making the whole statement look like "just a comment" and get skipped.
+  const withoutComments = schema
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n');
+
+  const statements = withoutComments
     .split(';')
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith('--'));
+    .filter((s) => s.length > 0);
 
   for (const stmt of statements) {
     console.log('Running:', stmt.slice(0, 60).replace(/\n/g, ' ') + '...');
