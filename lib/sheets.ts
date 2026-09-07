@@ -5,6 +5,13 @@ function getAuth() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON env var is missing');
   const credentials = JSON.parse(raw);
+  // Defensive fix: private_key line breaks sometimes survive as literal "\n"
+  // text (backslash + n) instead of real newline characters when passed
+  // through env var storage, which breaks PEM parsing. Force them back to
+  // real newlines regardless of how they arrived.
+  if (credentials.private_key && typeof credentials.private_key === 'string') {
+    credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+  }
   return new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
