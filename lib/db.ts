@@ -257,16 +257,64 @@ export async function getSubmissionsPaged(q: SubmissionQuery) {
 
 // --- Evaluation run history ---
 
-export async function getEvaluationRuns(limit = 25) {
+export interface RunQuery {
+  limit?: number;
+  from?: string;
+  to?: string;
+  type?: string; // all_new | specific_count | specific_uid
+  status?: string; // running | clean | error
+}
+
+export async function getEvaluationRuns(q: RunQuery = {}) {
+  const limit = Math.min(500, Math.max(1, q.limit ?? 50));
+  const where: string[] = [];
+  const params: any[] = [];
+  const bind = (v: any) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+
+  if (q.from) where.push(`started_at >= ${bind(q.from)}`);
+  if (q.to) where.push(`started_at <= ${bind(q.to)}`);
+  if (q.type && q.type !== 'all') where.push(`run_type = ${bind(q.type)}`);
+  if (q.status === 'running') where.push(`finished_at IS NULL`);
+  if (q.status === 'clean') where.push(`finished_at IS NOT NULL AND rows_errored = 0`);
+  if (q.status === 'error') where.push(`rows_errored > 0`);
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const res = await sql.query(
+    `SELECT id, run_type, requested_count, requested_uid,
+            rows_processed, rows_errored, total_cost_usd,
+            started_at, finished_at,
+            jsonb_array_length(COALESCE(steps, '[]'::jsonb)) AS step_count
+     FROM evaluation_runs
+     ${whereSql}
+     ORDER BY started_at DESC
+     LIMIT ${limit}`,
+    params
+  );
+  return res.rows;
+}
+
+export async function getEvaluationRun(id: number) {
   const res = await sql`
     SELECT id, run_type, requested_count, requested_uid,
            rows_processed, rows_errored, total_cost_usd,
-           started_at, finished_at
+           started_at, finished_at, COALESCE(steps, '[]'::jsonb) AS steps
     FROM evaluation_runs
-    ORDER BY started_at DESC
-    LIMIT ${limit}
+    WHERE id = ${id}
   `;
-  return res.rows;
+  return res.rows[0] || null;
+}
+
+// Overwrites the run's step log. The route accumulates events in memory and
+// flushes the full array after each submission — small at this scale.
+export async function updateRunSteps(runId: number, steps: unknown[]) {
+  await sql`
+    UPDATE evaluation_runs
+    SET steps = ${JSON.stringify(steps)}::jsonb
+    WHERE id = ${runId}
+  `;
 }
 
 // --- Manual review queue ---

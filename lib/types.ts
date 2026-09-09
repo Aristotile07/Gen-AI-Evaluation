@@ -48,6 +48,8 @@ export interface LlmCall {
   called_at: string;
 }
 
+export type { StepEvent, StepId, StepStatus } from './pipeline-steps';
+
 export interface EvaluationRun {
   id: number;
   run_type: 'all_new' | 'specific_count' | 'specific_uid' | string;
@@ -58,6 +60,11 @@ export interface EvaluationRun {
   total_cost_usd: string | number;
   started_at: string;
   finished_at: string | null;
+  step_count?: number;
+}
+
+export interface EvaluationRunDetail extends EvaluationRun {
+  steps: import('./pipeline-steps').StepEvent[];
 }
 
 export interface SubmissionsPage {

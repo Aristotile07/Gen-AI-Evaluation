@@ -68,3 +68,10 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
   started_at       TIMESTAMPTZ DEFAULT NOW(),
   finished_at      TIMESTAMPTZ
 );
+
+-- Per-step event log for a run (pipeline node timeline: start/ok/skip/error).
+-- Added after the initial schema; safe to re-run.
+ALTER TABLE evaluation_runs ADD COLUMN IF NOT EXISTS steps JSONB DEFAULT '[]'::jsonb;
+
+CREATE INDEX IF NOT EXISTS idx_evaluation_runs_started_at ON evaluation_runs (started_at);
+CREATE INDEX IF NOT EXISTS idx_evaluation_runs_run_type ON evaluation_runs (run_type);

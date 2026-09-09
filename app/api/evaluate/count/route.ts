@@ -1,7 +1,13 @@
 import { NextRequest } from 'next/server';
 import { readResponseSheet } from '@/lib/sheets';
-import { getExistingUids, startEvaluationRun, finishEvaluationRun } from '@/lib/db';
+import {
+  getExistingUids,
+  startEvaluationRun,
+  finishEvaluationRun,
+  updateRunSteps,
+} from '@/lib/db';
 import { evaluateSubmission } from '@/lib/pipeline';
+import type { StepEvent } from '@/lib/pipeline-steps';
 
 export const maxDuration = 300;
 
@@ -23,11 +29,19 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
 
       const runId = await startEvaluationRun('specific_count', count);
+      const steps: StepEvent[] = [];
       let processed = 0;
       let errored = 0;
       let totalCost = 0;
 
+      const onStep = (e: StepEvent) => {
+        steps.push(e);
+        send(e);
+      };
+
       try {
+        send({ type: 'meta', runId });
+
         const allRows = await readResponseSheet();
         const existingUids = await getExistingUids();
         const newRows = allRows
@@ -35,13 +49,13 @@ export async function POST(req: NextRequest) {
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(0, count);
 
-        send({ type: 'start', total: newRows.length, requestedCount: count });
+        send({ type: 'start', total: newRows.length, requestedCount: count, runId });
 
         for (let i = 0; i < newRows.length; i++) {
           const row = newRows[i];
           let status: 'done' | 'error' = 'done';
           try {
-            const result = await evaluateSubmission(row);
+            const result = await evaluateSubmission(row, false, onStep);
             totalCost += result.costUsd;
             if (result.status === 'error') {
               errored++;
@@ -55,9 +69,11 @@ export async function POST(req: NextRequest) {
             console.error(`Failed to evaluate ${row.uid}:`, err);
           }
           send({ type: 'progress', done: i + 1, total: newRows.length, uid: row.uid, status });
+          await updateRunSteps(runId, steps).catch(() => {});
         }
 
         await finishEvaluationRun(runId, processed, errored, totalCost);
+        await updateRunSteps(runId, steps).catch(() => {});
         send({
           type: 'done',
           runId,
@@ -69,7 +85,8 @@ export async function POST(req: NextRequest) {
         });
       } catch (err: any) {
         await finishEvaluationRun(runId, processed, errored, totalCost);
-        send({ type: 'error', error: err?.message || String(err) });
+        await updateRunSteps(runId, steps).catch(() => {});
+        send({ type: 'error', error: err?.message || String(err), runId });
       } finally {
         controller.close();
       }

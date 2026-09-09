@@ -9,6 +9,7 @@ import {
   CopyCheck,
   DollarSign,
   Play,
+  Workflow,
   LogOut,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ const NAV = [
   { href: '/duplicates', label: 'Duplicates', icon: CopyCheck },
   { href: '/costs', label: 'API Cost', icon: DollarSign },
   { href: '/evaluate', label: 'Evaluate', icon: Play },
+  { href: '/pipeline', label: 'Pipeline', icon: Workflow },
 ];
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
