@@ -1,4 +1,4 @@
-# AI Reliance & Project Evaluation Dashboard
+# Project Evaluator
 
 ## What this is
 Reads student project submissions from a Google Sheet, evaluates each one
@@ -68,12 +68,15 @@ app/
   costs/page.tsx              API cost management
   evaluate/page.tsx           Evaluation trigger panel
   api/
-    evaluate/all/route.ts     POST — evaluate all new rows
-    evaluate/count/route.ts   POST — evaluate next N new rows
+    evaluate/all/route.ts     POST — evaluate all new rows (streams NDJSON progress)
+    evaluate/count/route.ts   POST — evaluate next N new rows (streams NDJSON progress)
     evaluate/uid/route.ts     POST — evaluate/re-evaluate one UID
-    submissions/route.ts      GET — all submissions (dashboard data)
+    submissions/route.ts      GET — paginated/filtered/sorted submissions
     submissions/[uid]/route.ts GET — one submission + its LLM call log
-    costs/route.ts            GET — cost summary (dashboard data)
+    manual-review/route.ts    GET — rows flagged for manual review
+    duplicates/route.ts       GET — repo groups shared by >1 submission
+    runs/route.ts             GET — evaluation run history
+    costs/route.ts            GET — cost summary + spend-over-time
 lib/
   db.ts        Postgres query helpers
   sheets.ts    Google Sheets read/write (service account auth)

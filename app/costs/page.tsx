@@ -1,187 +1,255 @@
 'use client';
-import { useEffect, useState } from 'react';
+
+import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
-
-function todayRange() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
-  return { from, to };
-}
-
-function weekRange() {
-  const now = new Date();
-  const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  return { from, to: now.toISOString() };
-}
-
-function monthRange() {
-  const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  return { from, to: now.toISOString() };
-}
+import useSWR from 'swr';
+import {
+  startOfDay,
+  endOfDay,
+  subDays,
+  startOfMonth,
+  parseISO,
+  isValid,
+} from 'date-fns';
+import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
+import { StatCard } from '@/components/stat-card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { CardsSkeleton, ErrorState } from '@/components/states';
+import { CopyButton } from '@/components/copy-button';
+import { CallTypeChart, SpendOverTimeChart } from '@/components/cost-charts';
+import { fetcher } from '@/lib/fetcher';
+import { formatUsd, formatInt, shortId } from '@/lib/utils';
+import type { CostSummary } from '@/lib/types';
 
 const OUTLIER_THRESHOLD_USD = 0.05;
+const PRESETS = [
+  { key: 'today', label: 'Today' },
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+  { key: 'all', label: 'All time' },
+  { key: 'custom', label: 'Custom' },
+];
+
+function rangeFor(preset: string, customFrom: string, customTo: string) {
+  const now = new Date();
+  if (preset === 'today') return { from: startOfDay(now).toISOString(), to: endOfDay(now).toISOString() };
+  if (preset === 'week') return { from: subDays(now, 7).toISOString(), to: now.toISOString() };
+  if (preset === 'month') return { from: startOfMonth(now).toISOString(), to: now.toISOString() };
+  if (preset === 'custom') {
+    const f = customFrom ? parseISO(customFrom) : null;
+    const t = customTo ? parseISO(customTo) : null;
+    if (f && isValid(f) && t && isValid(t)) {
+      return { from: startOfDay(f).toISOString(), to: endOfDay(t).toISOString() };
+    }
+    return null; // incomplete custom range — don't query yet
+  }
+  return {}; // all time
+}
 
 export default function CostsPage() {
   const [preset, setPreset] = useState('today');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    let range: { from?: string; to?: string } = {};
-    if (preset === 'today') range = todayRange();
-    else if (preset === 'week') range = weekRange();
-    else if (preset === 'month') range = monthRange();
-    else if (preset === 'custom' && customFrom && customTo) range = { from: customFrom, to: customTo };
-    else if (preset === 'all') range = {};
+  const range = useMemo(
+    () => rangeFor(preset, customFrom, customTo),
+    [preset, customFrom, customTo]
+  );
 
-    const params = new URLSearchParams();
-    if (range.from) params.set('from', range.from);
-    if (range.to) params.set('to', range.to);
+  const key =
+    range === null
+      ? null
+      : (() => {
+          const p = new URLSearchParams();
+          if ('from' in range && range.from) p.set('from', range.from);
+          if ('to' in range && range.to) p.set('to', range.to);
+          return `/api/costs?${p.toString()}`;
+        })();
 
-    setLoading(true);
-    fetch(`/api/costs?${params.toString()}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      });
-  }, [preset, customFrom, customTo]);
+  const { data, error, isLoading, mutate } = useSWR<CostSummary>(key, fetcher, {
+    keepPreviousData: true,
+  });
 
-  const outliers = (data?.perProject || []).filter((p: any) => Number(p.total_cost) > OUTLIER_THRESHOLD_USD);
+  const outliers = (data?.perProject ?? []).filter(
+    (p) => Number(p.total_cost) > OUTLIER_THRESHOLD_USD
+  );
+
+  function toggle(uid: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(uid) ? next.delete(uid) : next.add(uid);
+      return next;
+    });
+  }
+
+  const projectsEvaluated = Number(data?.summary.projects_evaluated ?? 0);
+  const totalCost = Number(data?.summary.total_cost ?? 0);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">API Cost Management</h1>
-        <p className="text-sm text-gray-500 mt-1">LLM spend tracking, per evaluation and overall.</p>
-      </div>
+      <PageHeader title="API cost" description="LLM spend, per evaluation and overall." />
 
-      <div className="flex gap-2 items-center flex-wrap">
-        {['today', 'week', 'month', 'all', 'custom'].map((p) => (
-          <button
-            key={p}
-            onClick={() => setPreset(p)}
-            className={`text-sm px-3 py-1.5 rounded-md border ${
-              preset === p ? 'bg-ink text-white border-ink' : 'bg-white text-gray-600 border-gray-300'
-            }`}
+      <div className="flex flex-wrap items-center gap-2">
+        {PRESETS.map((p) => (
+          <Button
+            key={p.key}
+            variant={preset === p.key ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setPreset(p.key)}
           >
-            {p === 'all' ? 'All Time' : p.charAt(0).toUpperCase() + p.slice(1)}
-          </button>
+            {p.label}
+          </Button>
         ))}
         {preset === 'custom' && (
-          <>
-            <input type="date" onChange={(e) => setCustomFrom(new Date(e.target.value).toISOString())} className="text-sm px-2 py-1 border border-gray-300 rounded-md" />
-            <span className="text-sm text-gray-400">to</span>
-            <input type="date" onChange={(e) => setCustomTo(new Date(e.target.value).toISOString())} className="text-sm px-2 py-1 border border-gray-300 rounded-md" />
-          </>
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="w-40"
+              aria-label="From date"
+            />
+            <span className="text-sm text-muted-foreground">to</span>
+            <Input
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="w-40"
+              aria-label="To date"
+            />
+          </div>
         )}
       </div>
 
-      {loading || !data ? (
-        <p className="text-sm text-gray-400">Loading...</p>
-      ) : (
+      {range === null ? (
+        <p className="text-sm text-muted-foreground">Pick both dates to see a custom range.</p>
+      ) : isLoading && !data ? (
+        <CardsSkeleton />
+      ) : error ? (
+        <ErrorState message={(error as Error).message} onRetry={() => mutate()} />
+      ) : data ? (
         <>
-          <div className="grid grid-cols-4 gap-4">
-            <StatCard label="Total $ Spent (selected)" value={`$${Number(data.summary.total_cost).toFixed(4)}`} />
-            <StatCard label="Projects Evaluated" value={data.summary.projects_evaluated} />
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard label="Total spent (range)" value={formatUsd(totalCost, 4)} />
+            <StatCard label="Projects evaluated" value={projectsEvaluated} />
             <StatCard
-              label="Avg Cost / Project"
-              value={
-                data.summary.projects_evaluated > 0
-                  ? `$${(Number(data.summary.total_cost) / Number(data.summary.projects_evaluated)).toFixed(4)}`
-                  : '$0'
-              }
+              label="Avg cost / project"
+              value={projectsEvaluated > 0 ? formatUsd(totalCost / projectsEvaluated, 4) : '$0'}
             />
-            <StatCard label="Total Tokens" value={Number(data.summary.total_tokens).toLocaleString()} />
+            <StatCard label="Total tokens" value={formatInt(data.summary.total_tokens)} />
           </div>
 
           {outliers.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-800">
-              ⚠ {outliers.length} evaluation(s) cost more than ${OUTLIER_THRESHOLD_USD} — check if a bloated repo skewed token count.
-              {outliers.map((o: any) => (
-                <Link key={o.uid} href={`/submissions/${o.uid}`} className="block text-accent hover:underline mt-1">
-                  {o.uid} — ${Number(o.total_cost).toFixed(4)}
-                </Link>
-              ))}
+            <div
+              role="alert"
+              className="rounded-md border border-warn/30 bg-warn-muted p-4 text-sm text-warn"
+            >
+              <div className="flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4" aria-hidden />
+                {outliers.length} evaluation{outliers.length === 1 ? '' : 's'} cost more than{' '}
+                {formatUsd(OUTLIER_THRESHOLD_USD, 2)}
+              </div>
+              <div className="mt-1.5 space-y-0.5">
+                {outliers.map((o) => (
+                  <Link
+                    key={o.uid}
+                    href={`/submissions/${o.uid}`}
+                    className="block font-mono text-xs underline-offset-2 hover:underline"
+                  >
+                    {shortId(o.uid, 12)} — {formatUsd(o.total_cost, 4)}
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Breakdown by Call Type</h2>
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-400 uppercase">
-                <tr>
-                  <th className="text-left py-1">Call Type</th>
-                  <th className="text-left py-1">Calls</th>
-                  <th className="text-left py-1">Input Tokens</th>
-                  <th className="text-left py-1">Output Tokens</th>
-                  <th className="text-left py-1">Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.byCallType.map((c: any) => (
-                  <tr key={c.call_type} className="border-t border-gray-100">
-                    <td className="py-2">{c.call_type}</td>
-                    <td className="py-2">{c.calls}</td>
-                    <td className="py-2">{Number(c.input_tokens).toLocaleString()}</td>
-                    <td className="py-2">{Number(c.output_tokens).toLocaleString()}</td>
-                    <td className="py-2">${Number(c.cost).toFixed(4)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <CallTypeChart data={data.byCallType} />
+            <SpendOverTimeChart data={data.spendOverTime ?? []} />
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Per-Project Cost</h2>
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-400 uppercase">
-                <tr>
-                  <th className="text-left py-1">UID</th>
-                  <th className="text-left py-1">Text Auth</th>
-                  <th className="text-left py-1">Repo Analysis</th>
-                  <th className="text-left py-1">Scoring</th>
-                  <th className="text-left py-1">Total</th>
-                  <th className="text-left py-1">Tokens</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.perProject.map((p: any) => (
-                  <tr key={p.uid} className="border-t border-gray-100">
-                    <td className="py-2">
-                      <Link href={`/submissions/${p.uid}`} className="text-accent hover:underline font-mono text-xs">
-                        {p.uid.slice(0, 8)}...
-                      </Link>
-                    </td>
-                    <td className="py-2">${Number(p.text_auth_cost).toFixed(5)}</td>
-                    <td className="py-2">${Number(p.repo_analysis_cost).toFixed(5)}</td>
-                    <td className="py-2">${Number(p.scoring_cost).toFixed(5)}</td>
-                    <td className="py-2 font-medium">${Number(p.total_cost).toFixed(5)}</td>
-                    <td className="py-2 text-gray-500">{Number(p.total_tokens).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Per-project cost</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8" />
+                    <TableHead>UID</TableHead>
+                    <TableHead>Text auth</TableHead>
+                    <TableHead>Repo analysis</TableHead>
+                    <TableHead>Scoring</TableHead>
+                    <TableHead>Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.perProject.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                        No evaluations in this range.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    data.perProject.map((p) => {
+                      const open = expanded.has(p.uid);
+                      return (
+                        <Fragment key={p.uid}>
+                          <TableRow className="cursor-pointer" onClick={() => toggle(p.uid)}>
+                            <TableCell>
+                              {open ? (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <span className="flex items-center gap-1 font-mono text-xs">
+                                <Link
+                                  href={`/submissions/${p.uid}`}
+                                  className="text-accent hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {shortId(p.uid)}
+                                </Link>
+                                <CopyButton value={p.uid} label="Copy UID" />
+                              </span>
+                            </TableCell>
+                            <TableCell className="tabular-nums">{formatUsd(p.text_auth_cost, 5)}</TableCell>
+                            <TableCell className="tabular-nums">{formatUsd(p.repo_analysis_cost, 5)}</TableCell>
+                            <TableCell className="tabular-nums">{formatUsd(p.scoring_cost, 5)}</TableCell>
+                            <TableCell className="font-medium tabular-nums">{formatUsd(p.total_cost, 5)}</TableCell>
+                          </TableRow>
+                          {open && (
+                            <TableRow className="bg-muted/30 hover:bg-muted/30">
+                              <TableCell />
+                              <TableCell colSpan={5} className="text-xs text-muted-foreground">
+                                Total tokens: <span className="tabular-nums">{formatInt(p.total_tokens)}</span>
+                                {p.evaluated_at && <> · last call {new Date(p.evaluated_at).toLocaleString()}</>}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
 
-          <div className="text-xs text-gray-400 text-right">
-            All-time total spend: <span className="font-medium text-gray-600">${Number(data.allTimeTotal).toFixed(4)}</span>
-          </div>
+          <p className="text-right text-xs text-muted-foreground">
+            All-time total spend:{' '}
+            <span className="font-medium text-foreground">{formatUsd(data.allTimeTotal, 4)}</span>
+          </p>
         </>
-      )}
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-5">
-      <div className="text-xl font-semibold text-ink">{value}</div>
-      <div className="text-xs text-gray-500 mt-1">{label}</div>
+      ) : null}
     </div>
   );
 }

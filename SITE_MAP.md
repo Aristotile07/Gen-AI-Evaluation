@@ -1,9 +1,9 @@
-# Dashboard Site Map
+# Project Evaluator — Site Map
 
 ## Navigation Structure
 
 ```
-AI Reliance & Project Evaluation Dashboard
+Project Evaluator
 │
 ├── 📊 Overview (/)
 ├── 📋 Submissions (/submissions)

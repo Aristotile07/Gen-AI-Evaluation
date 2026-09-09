@@ -17,7 +17,20 @@
     "openai": "^4.55.0",
     "octokit": "^4.0.2",
     "recharts": "^2.12.7",
-    "date-fns": "^3.6.0"
+    "date-fns": "^3.6.0",
+    "@radix-ui/react-checkbox": "^1.1.1",
+    "@radix-ui/react-dialog": "^1.1.1",
+    "@radix-ui/react-select": "^2.1.1",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-tabs": "^1.1.0",
+    "@tanstack/react-table": "^8.19.3",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.417.0",
+    "next-themes": "^0.3.0",
+    "sonner": "^1.5.0",
+    "swr": "^2.2.5",
+    "tailwind-merge": "^2.4.0"
   },
   "devDependencies": {
     "typescript": "^5",
@@ -25,6 +38,7 @@
     "@types/react": "^18",
     "autoprefixer": "^10",
     "postcss": "^8",
-    "tailwindcss": "^3.4.1"
+    "tailwindcss": "^3.4.1",
+    "tailwindcss-animate": "^1.0.7"
   }
 }

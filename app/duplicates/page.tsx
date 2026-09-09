@@ -1,83 +1,100 @@
 'use client';
-import { useEffect, useState } from 'react';
+
 import Link from 'next/link';
+import useSWR from 'swr';
+import { format, isValid } from 'date-fns';
+import { PageHeader } from '@/components/page-header';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ExternalLink } from '@/components/external-link';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableSkeleton, ErrorState, EmptyState } from '@/components/states';
+import { CopyButton } from '@/components/copy-button';
+import { fetcher } from '@/lib/fetcher';
+import { shortId } from '@/lib/utils';
+
+interface GroupRow {
+  uid: string;
+  project_name: string | null;
+  timestamp: string | null;
+  duplicate_status: string | null;
+  processing_status: string | null;
+}
+interface Group {
+  link: string;
+  rows: GroupRow[];
+  distinct_uids: number;
+}
+
+function fmtDate(value: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  return isValid(d) ? format(d, 'dd MMM yyyy, HH:mm') : '—';
+}
 
 export default function DuplicatesPage() {
-  const [groups, setGroups] = useState<Record<string, any[]>>({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/submissions')
-      .then((r) => r.json())
-      .then((d) => {
-        const rows: any[] = d.submissions || [];
-        const grouped: Record<string, any[]> = {};
-        for (const r of rows) {
-          if (!r.github_link) continue;
-          if (!grouped[r.github_link]) grouped[r.github_link] = [];
-          grouped[r.github_link].push(r);
-        }
-        // keep only groups with more than one row
-        const filtered = Object.fromEntries(Object.entries(grouped).filter(([, v]) => v.length > 1));
-        setGroups(filtered);
-        setLoading(false);
-      });
-  }, []);
-
-  const groupEntries = Object.entries(groups);
+  const { data, error, isLoading, mutate } = useSWR<{ groups: Group[] }>('/api/duplicates', fetcher);
+  const groups = data?.groups ?? [];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink">Duplicates</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Repos shared across multiple UIDs. Same-UID resubmissions are informational; different-UID matches
-          need a human decision.
-        </p>
-      </div>
+      <PageHeader
+        title="Duplicates"
+        description="Repos shared by more than one submission. Same-student resubmissions are informational; different-student matches need a human decision."
+      />
 
-      {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
-      ) : groupEntries.length === 0 ? (
-        <p className="text-sm text-gray-400">No duplicate repos found.</p>
+      {isLoading ? (
+        <TableSkeleton rows={4} cols={3} />
+      ) : error ? (
+        <ErrorState message={(error as Error).message} onRetry={() => mutate()} />
+      ) : groups.length === 0 ? (
+        <EmptyState title="No duplicate repos" message="Every submission points to a unique repository." />
       ) : (
         <div className="space-y-4">
-          {groupEntries.map(([link, rows]) => {
-            const uids = new Set(rows.map((r) => r.uid));
-            const isRealDuplicate = uids.size > 1;
+          {groups.map((g) => {
+            const realDuplicate = Number(g.distinct_uids) > 1;
             return (
-              <div key={link} className="bg-white rounded-lg border border-gray-200 p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <a href={link} target="_blank" className="text-sm text-accent hover:underline">{link}</a>
-                  <span className={`text-xs px-2 py-1 rounded-full ${isRealDuplicate ? 'badge-high' : 'badge-medium'}`}>
-                    {isRealDuplicate ? 'Duplicate — different students' : 'Resubmission — same student'}
-                  </span>
+              <Card key={g.link} className="p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <ExternalLink href={g.link} className="max-w-full text-sm">
+                    {g.link}
+                  </ExternalLink>
+                  <Badge variant={realDuplicate ? 'high' : 'medium'}>
+                    {realDuplicate ? 'Duplicate — different students' : 'Resubmission — same student'}
+                  </Badge>
                 </div>
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-gray-400 uppercase">
-                    <tr>
-                      <th className="text-left py-1">UID</th>
-                      <th className="text-left py-1">Timestamp</th>
-                      <th className="text-left py-1">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows
-                      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                      .map((r) => (
-                        <tr key={r.uid} className="border-t border-gray-100">
-                          <td className="py-2">
-                            <Link href={`/submissions/${r.uid}`} className="text-accent hover:underline font-mono text-xs">
-                              {r.uid.slice(0, 8)}...
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>UID</TableHead>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {g.rows.map((r) => (
+                      <TableRow key={r.uid}>
+                        <TableCell>
+                          <span className="flex items-center gap-1 font-mono text-xs">
+                            <Link href={`/submissions/${r.uid}`} className="text-accent hover:underline">
+                              {shortId(r.uid)}
                             </Link>
-                          </td>
-                          <td className="py-2 text-gray-500">{new Date(r.timestamp).toLocaleString()}</td>
-                          <td className="py-2 text-gray-500">{r.duplicate_status}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+                            <CopyButton value={r.uid} label="Copy UID" />
+                          </span>
+                        </TableCell>
+                        <TableCell>{r.project_name || '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {fmtDate(r.timestamp)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {r.duplicate_status || '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
             );
           })}
         </div>

@@ -2,30 +2,164 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background: #f7f6f3;
-  color: #1a1d29;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  :root {
+    --background: 40 20% 97%;
+    --foreground: 227 24% 13%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 227 24% 13%;
+
+    --primary: 227 24% 13%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 12% 92%;
+    --secondary-foreground: 227 24% 13%;
+
+    --muted: 40 12% 94%;
+    --muted-foreground: 225 9% 44%;
+
+    --accent: 231 48% 48%;
+    --accent-foreground: 0 0% 100%;
+
+    --border: 225 14% 90%;
+    --input: 225 14% 86%;
+    --ring: 231 48% 48%;
+
+    --danger: 0 66% 47%;
+    --danger-foreground: 0 0% 100%;
+    --danger-muted: 0 72% 96%;
+
+    --warn: 33 88% 45%;
+    --warn-foreground: 0 0% 100%;
+    --warn-muted: 36 92% 95%;
+
+    --ok: 145 63% 33%;
+    --ok-foreground: 0 0% 100%;
+    --ok-muted: 146 55% 95%;
+
+    --neutral: 210 12% 45%;
+    --neutral-foreground: 0 0% 100%;
+    --neutral-muted: 210 16% 95%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 227 24% 9%;
+    --foreground: 40 18% 92%;
+
+    --card: 227 20% 12%;
+    --card-foreground: 40 18% 92%;
+
+    --primary: 40 18% 92%;
+    --primary-foreground: 227 24% 11%;
+
+    --secondary: 227 16% 18%;
+    --secondary-foreground: 40 18% 92%;
+
+    --muted: 227 16% 16%;
+    --muted-foreground: 225 10% 62%;
+
+    --accent: 231 60% 66%;
+    --accent-foreground: 227 24% 11%;
+
+    --border: 227 14% 20%;
+    --input: 227 14% 24%;
+    --ring: 231 60% 66%;
+
+    --danger: 0 70% 62%;
+    --danger-foreground: 0 0% 100%;
+    --danger-muted: 0 40% 18%;
+
+    --warn: 33 85% 58%;
+    --warn-foreground: 30 40% 10%;
+    --warn-muted: 34 45% 17%;
+
+    --ok: 145 55% 52%;
+    --ok-foreground: 145 40% 10%;
+    --ok-muted: 146 35% 15%;
+
+    --neutral: 210 12% 62%;
+    --neutral-foreground: 210 20% 10%;
+    --neutral-muted: 210 14% 18%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4 {
+    letter-spacing: -0.011em;
+  }
+
+  /* Keyboard focus is always visible; mouse focus is not. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: hsl(var(--accent) / 0.22);
+  }
 }
 
-h1, h2, h3 {
-  letter-spacing: -0.01em;
+@layer components {
+  /* Semantic pill — colour derives from the same tokens as everything else. */
+  .badge-base {
+    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium;
+  }
+  .badge-high {
+    background: hsl(var(--danger-muted));
+    color: hsl(var(--danger));
+    border-color: hsl(var(--danger) / 0.3);
+  }
+  .badge-medium {
+    background: hsl(var(--warn-muted));
+    color: hsl(var(--warn));
+    border-color: hsl(var(--warn) / 0.3);
+  }
+  .badge-low {
+    background: hsl(var(--ok-muted));
+    color: hsl(var(--ok));
+    border-color: hsl(var(--ok) / 0.3);
+  }
+  .badge-na {
+    background: hsl(var(--neutral-muted));
+    color: hsl(var(--neutral));
+    border-color: hsl(var(--neutral) / 0.3);
+  }
 }
 
-.badge-high { background: #fdecea; color: #c0392b; border: 1px solid #f0b4ab; }
-.badge-medium { background: #fef5e7; color: #d68910; border: 1px solid #f5cf8f; }
-.badge-low { background: #eafaf1; color: #1e8449; border: 1px solid #a3e4c1; }
-.badge-na { background: #eceff1; color: #607d8b; border: 1px solid #cfd8dc; }
-
-/* subtle card hover lift for clickable rows/cards, used sparingly */
-.card-hover {
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+/* Skeleton shimmer */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--muted));
 }
-.card-hover:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    hsl(var(--card) / 0.6),
+    transparent
+  );
+  animation: shimmer 1.6s infinite;
 }
-
-::selection {
-  background: rgba(61, 90, 128, 0.18);
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
